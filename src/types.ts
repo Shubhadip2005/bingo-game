@@ -9,7 +9,7 @@ export interface Player {
   online: boolean;
 }
 
-/** A player's report of how many lines they have completed after a given call. */
+/** After each call a player reports only whether they have reached the winning number of lines. */
 export interface Report {
   count: number;
   won: boolean;

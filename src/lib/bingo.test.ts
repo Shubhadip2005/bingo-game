@@ -119,10 +119,10 @@ describe("room flow", () => {
   });
   it("passes the turn after both players report and nobody has won", () => {
     let room = applyCall(startedRoom(), "A", 5)!;
-    room = applyReport(room, "A", 1, 0)!;
+    room = applyReport(room, "A", 1, false)!;
     expect(room.awaiting).toBe(true);
-    expect(applyReport(room, "B", 99, 0)).toBeNull(); // stale report
-    room = applyReport(room, "B", 1, 0)!;
+    expect(applyReport(room, "B", 99, false)).toBeNull(); // stale report
+    room = applyReport(room, "B", 1, false)!;
     expect(room.awaiting).toBe(false);
     expect(room.turnId).toBe("B");
     expect(applyCall(room, "B", 5)).toBeNull(); // already called
@@ -130,16 +130,16 @@ describe("room flow", () => {
   });
   it("one player reaching the target wins", () => {
     let room = applyCall(startedRoom(), "A", 5)!;
-    room = applyReport(room, "B", 1, 2)!;
-    room = applyReport(room, "A", 1, 5)!;
+    room = applyReport(room, "B", 1, false)!;
+    room = applyReport(room, "A", 1, true)!;
     expect(room.status).toBe("finished");
     expect(room.winnerIds).toEqual(["A"]);
     expect(room.endReason).toBe("lines");
   });
   it("both reaching the target on the same number is a draw", () => {
     let room = applyCall(startedRoom(), "A", 5)!;
-    room = applyReport(room, "A", 1, 5)!;
-    room = applyReport(room, "B", 1, 6)!;
+    room = applyReport(room, "A", 1, true)!;
+    room = applyReport(room, "B", 1, true)!;
     expect(room.status).toBe("finished");
     expect([...room.winnerIds!].sort()).toEqual(["A", "B"]);
   });
@@ -152,8 +152,8 @@ describe("room flow", () => {
   });
   it("rematch starts a new round and swaps who goes first", () => {
     let room = applyCall(startedRoom(), "A", 5)!;
-    room = applyReport(room, "A", 1, 5)!;
-    room = applyReport(room, "B", 1, 0)!;
+    room = applyReport(room, "A", 1, true)!;
+    room = applyReport(room, "B", 1, false)!;
     const next = applyRematch(room, "B")!;
     expect(next.status).toBe("setup");
     expect(next.round).toBe(2);
@@ -175,5 +175,6 @@ describe("room flow", () => {
     expect(room.gridSize).toBe(10);
     expect(room.linesToWin).toBe(12);
     expect(room.players["A"].name).toBe("Player 1");
+    expect(room.diagonals).toBe(true); // diagonals always count
   });
 });

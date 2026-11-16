@@ -46,7 +46,6 @@ export default function Lobby({ room, roomId, uid, onLeave }: Props) {
         <h2 className="title">Waiting for your opponent</h2>
         <p className="hint">
           {room.gridSize}×{room.gridSize} board, first to {room.linesToWin} lines. Rows, columns and diagonals count.
-          {room.diagonals ? "Diagonals count." : "Rows and columns only."}
         </p>
 
         <p className="label">Room code</p>
