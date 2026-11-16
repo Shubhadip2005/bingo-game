@@ -52,7 +52,7 @@ export function makeRoom(hostId: string, hostName: string, opts: RoomOptions, no
   return {
     gridSize,
     linesToWin,
-    diagonals: opts.diagonals,
+    diagonals: true, // rows, columns and both diagonals always count
     status: "waiting",
     hostId,
     round: 1,
@@ -142,14 +142,14 @@ export function applyCall(room: RoomData, uid: string, num: number): RoomData | 
  * The report that arrives last settles the call: someone reached the target -> finished
  * (both reached it on the same number -> draw), otherwise the turn passes.
  */
-export function applyReport(room: RoomData, uid: string, count: number, lines: number): RoomData | null {
+export function applyReport(room: RoomData, uid: string, count: number, won: boolean): RoomData | null {
   if (room.status !== "playing" || !room.awaiting || count !== room.callCount || !room.players[uid]) return null;
-  const reports = { ...room.reports, [uid]: { count, lines } };
+  const reports = { ...room.reports, [uid]: { count, won } };
   const ids = Object.keys(room.players);
   const complete = ids.length === 2 && ids.every((id) => reports[id]?.count === room.callCount);
   if (!complete) return { ...room, reports };
 
-  const winners = ids.filter((id) => reports[id].lines >= room.linesToWin);
+  const winners = ids.filter((id) => reports[id].won);
   if (winners.length > 0) {
     return { ...room, reports, awaiting: false, status: "finished", winnerIds: winners, endReason: "lines" };
   }

@@ -14,7 +14,6 @@ export default function Home({ uid, name, onChangeName }: Props) {
   const [mode, setMode] = useState<"create" | "join">("create");
   const [gridSize, setGridSize] = useState(5);
   const [lineMode, setLineMode] = useState(1); // index into linesToWinOptions: 1 = Standard
-  const [diagonals, setDiagonals] = useState(true);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +31,7 @@ export default function Home({ uid, name, onChangeName }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const roomId = await createRoom(uid, name, { gridSize, linesToWin, diagonals });
+      const roomId = await createRoom(uid, name, { gridSize, linesToWin, diagonals: true });
       navigate(`/room/${roomId}`);
     } catch (err) {
       console.error(err);
@@ -122,14 +121,9 @@ export default function Home({ uid, name, onChangeName }: Props) {
               ))}
             </div>
 
-            <label className="check">
-              <input type="checkbox" checked={diagonals} onChange={(e) => setDiagonals(e.target.checked)} />
-              Diagonals count as lines
-            </label>
-
             <p className="hint">
-              The first player to complete {linesToWin} lines wins. If you both get there on the same number, it's a
-              draw.
+              The first player to complete {linesToWin} lines wins. Rows, columns and diagonals all count. If you both
+              get there on the same number, it's a draw.
             </p>
 
             {error && <p className="error">{error}</p>}

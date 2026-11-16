@@ -59,8 +59,8 @@ export async function leaveLobby(roomId: string, uid: string, isHost: boolean): 
 export const startGame = (roomId: string, uid: string) => tx(roomId, (r) => applyStart(r, uid));
 export const markReady = (roomId: string, uid: string) => tx(roomId, (r) => applyReady(r, uid));
 export const callNumber = (roomId: string, uid: string, num: number) => tx(roomId, (r) => applyCall(r, uid, num));
-export const reportLines = (roomId: string, uid: string, count: number, lines: number) =>
-  tx(roomId, (r) => applyReport(r, uid, count, lines));
+export const reportLines = (roomId: string, uid: string, count: number, won: boolean) =>
+  tx(roomId, (r) => applyReport(r, uid, count, won));
 export const forfeit = (roomId: string, loserId: string) => tx(roomId, (r) => applyForfeit(r, loserId));
 export const rematch = (roomId: string, uid: string) => tx(roomId, (r) => applyRematch(r, uid));
 

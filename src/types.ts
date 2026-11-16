@@ -12,7 +12,7 @@ export interface Player {
 /** A player's report of how many lines they have completed after a given call. */
 export interface Report {
   count: number;
-  lines: number;
+  won: boolean;
 }
 
 export interface LastCall {

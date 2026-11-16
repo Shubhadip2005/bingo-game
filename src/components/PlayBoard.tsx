@@ -29,7 +29,6 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
   }
 
   const myLines = countLines(myCells, room.called, n, room.diagonals);
-  const opponentLines = opponentId ? room.reports[opponentId]?.lines ?? 0 : 0;
   const lit = litCells(myCells, room.called, n, room.diagonals);
   const myTurn = room.turnId === uid;
   const canPick = myTurn && !room.awaiting && !pending;
@@ -70,11 +69,6 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
   else if (myTurn) banner = "Your turn. Tap a number on your board.";
   else banner = `${opponent?.name ?? "Your opponent"} is choosing a number…`;
 
-  const rows: { id: string; name: string; lines: number; you: boolean }[] = [
-    { id: uid, name: room.players[uid]?.name ?? "You", lines: myLines, you: true },
-    ...(opponentId ? [{ id: opponentId, name: opponent?.name ?? "Opponent", lines: opponentLines, you: false }] : []),
-  ];
-
   return (
     <main className="page wide">
       <div className="play-layout">
@@ -96,25 +90,16 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
 
         <aside className="side">
           <div className="card">
-            <h2 className="title small">First to {room.linesToWin} lines</h2>
-            <ul className="progress-list">
-              {rows.map((r) => (
-                <li key={r.id}>
-                  <div className="progress-top">
-                    <span className="grow">
-                      {r.name}
-                      {r.you && <span className="tag you">You</span>}
-                    </span>
-                    <strong>
-                      {r.lines}/{room.linesToWin}
-                    </strong>
-                  </div>
-                  <div className="bar">
-                    <div className="bar-fill" style={{ width: `${Math.min(100, (r.lines / room.linesToWin) * 100)}%` }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <h2 className="title small">Your lines</h2>
+            <div className="progress-top">
+              <span className="grow">First to {room.linesToWin} wins</span>
+              <strong>
+                {myLines}/{room.linesToWin}
+              </strong>
+            </div>
+            <div className="bar">
+              <div className="bar-fill" style={{ width: `${Math.min(100, (myLines / room.linesToWin) * 100)}%` }} />
+            </div>
             {opponent && !opponent.online && (
               <div className="offline">
                 <p>{opponent.name} is offline.</p>

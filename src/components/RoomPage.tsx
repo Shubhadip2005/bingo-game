@@ -68,7 +68,7 @@ export default function RoomPage({ uid, name }: Props) {
     if (lastReport.current.key === key && now - lastReport.current.at < 2500) return;
     lastReport.current = { key, at: now };
     const lines = countLines(myCells, room.called, room.gridSize, room.diagonals);
-    reportLines(roomId, uid, room.callCount, lines).catch(() => undefined);
+    reportLines(roomId, uid, room.callCount, lines >= room.linesToWin).catch(() => undefined);
   }, [room, myCells, tick, isPlayer, roomId, uid]);
 
   async function handleJoin() {
