@@ -3,7 +3,8 @@
  * No Firebase and no React in here, so it is easy to test.
  */
 
-export const GRID_SIZES = [5, 6, 7, 8, 9, 10];
+export const MIN_GRID = 5;
+export const MAX_GRID = 25;
 
 /** Firebase turns integer-keyed objects into arrays, so keys are prefixed with "n". */
 export const callKey = (num: number): string => `n${num}`;
@@ -54,13 +55,21 @@ export function litCells(
   return lit;
 }
 
-/** "Lines to win" choices for a grid size. Standard = n lines (5 lines on 5x5 = B-I-N-G-O). */
-export function linesToWinOptions(n: number): { label: string; value: number }[] {
-  return [
-    { label: "Quick", value: n - 2 },
-    { label: "Standard", value: n },
-    { label: "Long", value: n + 2 },
-  ];
+export type LineKey = "short" | "quick" | "standard" | "long";
+
+/**
+ * "Lines to win" choices for a grid size. Standard = n lines (5 lines on 5x5 = B-I-N-G-O).
+ * "Short" only appears on bigger boards, where it keeps games from dragging on.
+ */
+export function linesToWinOptions(n: number): { key: LineKey; label: string; value: number }[] {
+  const quick = n - 2;
+  const short = Math.max(3, Math.ceil(n / 2));
+  const options: { key: LineKey; label: string; value: number }[] = [];
+  if (short < quick) options.push({ key: "short", label: "Short", value: short });
+  options.push({ key: "quick", label: "Quick", value: quick });
+  options.push({ key: "standard", label: "Standard", value: n });
+  options.push({ key: "long", label: "Long", value: n + 2 });
+  return options;
 }
 
 // ---------- board setup helpers ----------
@@ -116,6 +125,13 @@ export function shuffled<T>(items: T[], rand: () => number = Math.random): T[] {
 export function randomFill(draft: Draft, n: number, rand: () => number = Math.random): Draft {
   const pool = shuffled(unusedNumbers(draft, n), rand);
   return draft.map((v) => (v === null ? (pool.pop() as number) : v));
+}
+
+/** Fill every empty box with the unused numbers in order: 1, 2, 3 ... */
+export function sequentialFill(draft: Draft, n: number): Draft {
+  const pool = unusedNumbers(draft, n);
+  let next = 0;
+  return draft.map((v) => (v === null ? pool[next++] : v));
 }
 
 export function emptyDraft(n: number): Draft {

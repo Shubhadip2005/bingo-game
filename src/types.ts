@@ -7,9 +7,14 @@ export interface Player {
   joinedAt: number;
   ready: boolean;
   online: boolean;
+  /** true once the player has left a game in progress (they are skipped from then on) */
+  left: boolean;
 }
 
-/** After each call a player reports only whether they have reached the winning number of lines. */
+/**
+ * A player's report after a call: only whether they have reached the winning number of lines.
+ * The actual line count is never shared, so nobody can see how close the opponent is.
+ */
 export interface Report {
   count: number;
   won: boolean;
@@ -24,6 +29,8 @@ export interface RoomOptions {
   gridSize: number;
   linesToWin: number;
   diagonals: boolean;
+  /** 2 to 5 */
+  maxPlayers: number;
 }
 
 export interface RoomData extends RoomOptions {
@@ -31,8 +38,9 @@ export interface RoomData extends RoomOptions {
   hostId: string;
   round: number;
   players: Record<string, Player>;
+  /** turn order for the current round; order[0] calls first */
+  order: string[];
   turnId: string | null;
-  firstTurnId: string | null;
   /** callKey(number) -> order in which it was called (1, 2, 3 ...) */
   called: Record<string, number>;
   callCount: number;

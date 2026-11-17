@@ -1,11 +1,13 @@
 /**
- * Pure game-state transitions. Every function takes the current room and returns the
- * next room, or null when the action is not allowed. roomActions.ts runs these inside
- * Firebase transactions, so two players acting at the same moment can never corrupt
- * the game.
+ * Pure game-state transitions for 2 to 5 players. Every function takes the current room and
+ * returns the next room, or null when the action is not allowed. roomActions.ts runs these
+ * inside Firebase transactions, so players acting at the same moment can never corrupt the game.
  */
 import type { Player, RoomData, RoomOptions } from "../types";
-import { callKey, isCalled } from "./bingoLogic";
+import { MAX_GRID, MIN_GRID, callKey, isCalled, shuffled } from "./bingoLogic";
+
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 5;
 
 export const cleanName = (name: string, fallback: string): string => name.trim().slice(0, 20) || fallback;
 
@@ -21,19 +23,23 @@ export function normalizeRoom(raw: any): RoomData {
       joinedAt: Number(p?.joinedAt) || 0,
       ready: !!p?.ready,
       online: p?.online !== false,
+      left: !!p?.left,
     };
   }
-  const gridSize = Number(raw.gridSize) || 5;
+  const gridSize = Number(raw.gridSize) || MIN_GRID;
+  const rawOrder = raw.order;
+  const order = (Array.isArray(rawOrder) ? rawOrder : Object.values(rawOrder ?? {})).map(String);
   return {
     gridSize,
     linesToWin: Number(raw.linesToWin) || gridSize,
     diagonals: raw.diagonals !== false,
+    maxPlayers: Number(raw.maxPlayers) || MIN_PLAYERS,
     status: raw.status ?? "waiting",
     hostId: raw.hostId ?? "",
     round: Number(raw.round) || 1,
     players,
+    order,
     turnId: raw.turnId ?? null,
-    firstTurnId: raw.firstTurnId ?? null,
     called: raw.called ?? {},
     callCount: Number(raw.callCount) || 0,
     lastCall: raw.lastCall ?? null,
@@ -46,19 +52,23 @@ export function normalizeRoom(raw: any): RoomData {
 }
 
 export function makeRoom(hostId: string, hostName: string, opts: RoomOptions, now = Date.now()): RoomData {
-  const gridSize = Math.min(10, Math.max(5, Math.round(opts.gridSize)));
+  const gridSize = Math.min(MAX_GRID, Math.max(MIN_GRID, Math.round(opts.gridSize)));
   const linesToWin = Math.min(gridSize + 2, Math.max(3, Math.round(opts.linesToWin)));
-  const host: Player = { id: hostId, name: cleanName(hostName, "Player 1"), joinedAt: now, ready: false, online: true };
+  const maxPlayers = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, Math.round(opts.maxPlayers)));
+  const host: Player = {
+    id: hostId, name: cleanName(hostName, "Player 1"), joinedAt: now, ready: false, online: true, left: false,
+  };
   return {
     gridSize,
     linesToWin,
     diagonals: true, // rows, columns and both diagonals always count
+    maxPlayers,
     status: "waiting",
     hostId,
     round: 1,
     players: { [hostId]: host },
+    order: [],
     turnId: null,
-    firstTurnId: null,
     called: {},
     callCount: 0,
     lastCall: null,
@@ -70,8 +80,25 @@ export function makeRoom(hostId: string, hostName: string, opts: RoomOptions, no
   };
 }
 
-export function otherPlayerId(room: RoomData, uid: string | null): string | null {
-  return Object.keys(room.players).find((id) => id !== uid) ?? null;
+// ---------- helpers ----------
+
+/** Players still in the game (not left). */
+export const activeIds = (room: RoomData): string[] =>
+  Object.keys(room.players).filter((id) => !room.players[id].left);
+
+/** Turn order without players who left. */
+export const activeOrder = (room: RoomData): string[] =>
+  room.order.filter((id) => room.players[id] && !room.players[id].left);
+
+/** The next player after `fromId` who is still in the game. */
+export function nextActive(room: RoomData, fromId: string): string | null {
+  const order = room.order;
+  const start = order.indexOf(fromId);
+  for (let step = 1; step <= order.length; step++) {
+    const id = order[(start + step) % order.length];
+    if (room.players[id] && !room.players[id].left) return id;
+  }
+  return null;
 }
 
 function resetRound(room: RoomData): RoomData {
@@ -91,10 +118,12 @@ function resetRound(room: RoomData): RoomData {
   };
 }
 
+// ---------- lobby ----------
+
 export function applyJoin(room: RoomData, player: Player): RoomData | null {
   if (room.players[player.id]) return room;
   if (room.status !== "waiting") return null;
-  if (Object.keys(room.players).length >= 2) return null;
+  if (Object.keys(room.players).length >= room.maxPlayers) return null;
   return { ...room, players: { ...room.players, [player.id]: player } };
 }
 
@@ -105,24 +134,29 @@ export function applyGuestLeave(room: RoomData, uid: string): RoomData | null {
   return { ...room, players };
 }
 
+/** Host starts once at least two players are in. The turn order is shuffled. */
 export function applyStart(room: RoomData, requesterId: string, rand: () => number = Math.random): RoomData | null {
   if (room.status !== "waiting" || room.hostId !== requesterId) return null;
   const ids = Object.keys(room.players);
-  if (ids.length !== 2) return null;
-  return { ...resetRound(room), status: "setup", firstTurnId: ids[rand() < 0.5 ? 0 : 1] };
+  if (ids.length < MIN_PLAYERS || ids.length > room.maxPlayers) return null;
+  return { ...resetRound(room), status: "setup", order: shuffled(ids, rand) };
 }
 
-/** A player confirmed their board. When both are ready the match begins. */
+// ---------- setup ----------
+
+/** A player confirmed their board. When every remaining player is ready the match begins. */
 export function applyReady(room: RoomData, uid: string): RoomData | null {
-  if (room.status !== "setup" || !room.players[uid]) return null;
-  const players = { ...room.players, [uid]: { ...room.players[uid], ready: true } };
-  const ids = Object.keys(players);
-  const everyoneReady = ids.length === 2 && ids.every((id) => players[id].ready);
-  if (!everyoneReady) return { ...room, players };
-  return { ...room, players, status: "playing", turnId: room.firstTurnId ?? ids[0], awaiting: false };
+  if (room.status !== "setup" || !room.players[uid] || room.players[uid].left) return null;
+  const next: RoomData = { ...room, players: { ...room.players, [uid]: { ...room.players[uid], ready: true } } };
+  const active = activeIds(next);
+  const everyoneReady = active.length >= MIN_PLAYERS && active.every((id) => next.players[id].ready);
+  if (!everyoneReady) return next;
+  return { ...next, status: "playing", turnId: activeOrder(next)[0] ?? active[0], awaiting: false };
 }
 
-/** The player whose turn it is picks a number. It is marked for both players. */
+// ---------- playing ----------
+
+/** The player whose turn it is picks a number. It is marked for everyone. */
 export function applyCall(room: RoomData, uid: string, num: number): RoomData | null {
   if (room.status !== "playing" || room.turnId !== uid || room.awaiting) return null;
   if (!Number.isInteger(num) || num < 1 || num > room.gridSize * room.gridSize) return null;
@@ -138,36 +172,72 @@ export function applyCall(room: RoomData, uid: string, num: number): RoomData | 
 }
 
 /**
- * Each player reports how many lines their own (hidden) board has after the latest call.
- * The report that arrives last settles the call: someone reached the target -> finished
- * (both reached it on the same number -> draw), otherwise the turn passes.
+ * Once every remaining player has reported for the latest call, settle it: anyone who reached
+ * the target wins (several at once = a draw between them), otherwise the turn passes on.
+ */
+function settleCall(room: RoomData): RoomData {
+  const active = activeIds(room);
+  const complete = active.every((id) => room.reports[id]?.count === room.callCount);
+  if (!complete) return room;
+  const winners = active.filter((id) => room.reports[id].won);
+  if (winners.length > 0) {
+    return { ...room, awaiting: false, status: "finished", winnerIds: winners, endReason: "lines" };
+  }
+  return { ...room, awaiting: false, turnId: nextActive(room, room.turnId ?? "") };
+}
+
+/**
+ * Each player reports only whether their own (hidden) board has reached the target after the
+ * latest call. The line count itself is never shared.
  */
 export function applyReport(room: RoomData, uid: string, count: number, won: boolean): RoomData | null {
-  if (room.status !== "playing" || !room.awaiting || count !== room.callCount || !room.players[uid]) return null;
-  const reports = { ...room.reports, [uid]: { count, won } };
-  const ids = Object.keys(room.players);
-  const complete = ids.length === 2 && ids.every((id) => reports[id]?.count === room.callCount);
-  if (!complete) return { ...room, reports };
+  if (room.status !== "playing" || !room.awaiting || count !== room.callCount) return null;
+  if (!room.players[uid] || room.players[uid].left) return null;
+  return settleCall({ ...room, reports: { ...room.reports, [uid]: { count, won } } });
+}
 
-  const winners = ids.filter((id) => reports[id].won);
-  if (winners.length > 0) {
-    return { ...room, reports, awaiting: false, status: "finished", winnerIds: winners, endReason: "lines" };
+// ---------- leaving ----------
+
+/**
+ * A player leaves (or is removed because they went offline). The game carries on for everyone
+ * else; if only one player is left, that player wins.
+ */
+export function applyLeave(room: RoomData, uid: string): RoomData | null {
+  if (room.status !== "setup" && room.status !== "playing") return null;
+  const player = room.players[uid];
+  if (!player || player.left) return null;
+
+  const next: RoomData = { ...room, players: { ...room.players, [uid]: { ...player, left: true, online: false } } };
+  const active = activeIds(next);
+
+  if (active.length < MIN_PLAYERS) {
+    return { ...next, status: "finished", awaiting: false, winnerIds: active, endReason: "forfeit" };
   }
-  return { ...room, reports, awaiting: false, turnId: otherPlayerId(room, room.turnId) };
+  if (next.status === "setup") {
+    const everyoneReady = active.every((id) => next.players[id].ready);
+    return everyoneReady
+      ? { ...next, status: "playing", turnId: activeOrder(next)[0] ?? active[0], awaiting: false }
+      : next;
+  }
+  if (next.awaiting) return settleCall(next); // the leaver's report is no longer needed
+  if (next.turnId === uid) return { ...next, turnId: nextActive(next, uid) };
+  return next;
 }
 
-/** `loserId` leaves (or is declared gone), so the other player wins. */
-export function applyForfeit(room: RoomData, loserId: string): RoomData | null {
-  if ((room.status !== "setup" && room.status !== "playing") || !room.players[loserId]) return null;
-  const winner = otherPlayerId(room, loserId);
-  if (!winner) return null;
-  return { ...room, status: "finished", awaiting: false, winnerIds: [winner], endReason: "forfeit" };
-}
+// ---------- rematch ----------
 
-/** Play again: new round, empty boards, and the other player gets the first call. */
+/** Play again: new round, empty boards, a different player calls first. Players who left or went offline are dropped. */
 export function applyRematch(room: RoomData, uid: string): RoomData | null {
-  if (room.status !== "finished" || !room.players[uid]) return null;
-  if (Object.keys(room.players).length !== 2) return null;
-  const first = otherPlayerId(room, room.firstTurnId) ?? Object.keys(room.players)[0];
-  return { ...resetRound(room), status: "setup", round: room.round + 1, firstTurnId: first };
+  if (room.status !== "finished" || !room.players[uid] || room.players[uid].left) return null;
+  const remaining = activeIds(room).filter((id) => id === uid || room.players[id].online);
+  if (remaining.length < MIN_PLAYERS) return null;
+
+  const players: RoomData["players"] = {};
+  for (const id of remaining) players[id] = room.players[id];
+
+  const kept = room.order.filter((id) => players[id]);
+  const rotated = kept.length > 0 ? [...kept.slice(1), kept[0]] : [];
+  for (const id of remaining) if (!rotated.includes(id)) rotated.push(id);
+
+  return { ...resetRound({ ...room, players }), status: "setup", round: room.round + 1, order: rotated };
 }

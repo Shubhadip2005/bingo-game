@@ -1,8 +1,8 @@
 # Bingo Duel
 
-A real-time, two-player Bingo game. Each player secretly arranges their own board, then both call
-numbers in turn. A called number is marked on **both** boards. First to complete the required number of
-lines wins. If both get there on the same number, it's a draw. When the game ends, both boards are
+A real-time Bingo game for 2 to 5 players. Each player secretly arranges their own board, then both call
+numbers in turn. A called number is marked on **every** board. First to complete the required number of
+lines wins. If several get there on the same number, it's a draw. When the game ends, all boards are
 revealed along with the order the numbers were called.
 
 Built with Vite, React, TypeScript and Firebase (Realtime Database + Anonymous Auth).
@@ -10,17 +10,22 @@ Built with Vite, React, TypeScript and Firebase (Realtime Database + Anonymous A
 ## Rules
 
 1. Enter your name, then **create** a room or **join** one with its 5-letter code (or invite link).
-2. The creator picks a board size (5x5 = 25 boxes up to 10x10 = 100 boxes), how many lines are needed
-   (Quick = N-2, Standard = N, Long = N+2) and whether diagonals count. Two players only.
-3. When the second player has joined, the creator presses **Start game**.
-4. Both players arrange their own board: tap an empty box to place the next number (1, 2, 3 ...),
+2. The creator picks the board size (5x5 = 25 boxes up to 25x25 = 625 boxes), the number of players
+   (2 to 5) and how many lines are needed to win. Rows, columns and both diagonals all count.
+3. Players join with the code. The creator presses **Start game** once at least 2 players are in.
+   Nobody can join after the game starts.
+4. Everyone arranges their own board: tap an empty box to place the next number (1, 2, 3 ...),
    tap a placed number to change or remove it. Every number from 1 to N x N must be used exactly once.
    Press **I'm ready**. The board is then locked.
-5. Players take turns picking any uncalled number from their own board. It is marked on both boards.
-6. Rows, columns (and diagonals, if enabled) fully marked count as lines. First to the target wins;
-   both reaching it on the same number is a draw.
-7. After the game both boards are shown, with call order numbers. **Play again** starts a new round
-   and the other player calls first.
+5. Players take turns in a shuffled order. On your turn pick any uncalled number from your own board.
+   It is marked on **everyone's** board.
+6. First to complete the required number of lines wins. If several players get there on the same
+   number, they draw.
+7. Each player only ever sees their own line count. When the game ends, every board is revealed with
+   the order the numbers were called.
+8. If a player leaves mid-game the game carries on for the rest. If only one player is left, they win.
+   Offline players can be removed by anyone so the game never gets stuck.
+9. **Play again** starts a new round with everyone still online, and a different player calls first.
 
 ## Set up Firebase (one time, about 5 minutes)
 
@@ -82,7 +87,7 @@ write-once per round, so nobody can edit a board after pressing Ready.
 that arrives last settles the call atomically: someone reached the target -> finished (both -> draw),
 otherwise the turn passes.
 
-**Fair play.** A modified client could report a false line count. When the game ends both boards are
+**Fair play.** A modified client could report a false win. When the game ends all boards are
 revealed and the result screen recounts lines from the real boards, so a false win is visible.
 For a stricter setup, move the settle step into a Cloud Function.
 

@@ -3,7 +3,7 @@ import { ref, get, set, remove, runTransaction, onValue, onDisconnect } from "fi
 import { db } from "../firebase";
 import type { Player, RoomData, RoomOptions } from "../types";
 import {
-  applyCall, applyForfeit, applyGuestLeave, applyJoin, applyReady, applyRematch, applyReport,
+  applyCall, applyGuestLeave, applyJoin, applyLeave, applyReady, applyRematch, applyReport,
   applyStart, cleanName, makeRoom, normalizeRoom,
 } from "./roomLogic";
 import { generateRoomId } from "./session";
@@ -43,9 +43,11 @@ export async function joinRoom(roomId: string, uid: string, name: string): Promi
   const room = normalizeRoom(snap.val());
   if (room.players[uid]) return { ok: true };
   if (room.status !== "waiting") return { ok: false, error: "That game has already started." };
-  if (Object.keys(room.players).length >= 2) return { ok: false, error: "That room already has two players." };
+  if (Object.keys(room.players).length >= room.maxPlayers) return { ok: false, error: "That room is full." };
 
-  const player: Player = { id: uid, name: cleanName(name, "Player 2"), joinedAt: Date.now(), ready: false, online: true };
+  const player: Player = {
+    id: uid, name: cleanName(name, "Player"), joinedAt: Date.now(), ready: false, online: true, left: false,
+  };
   const applied = await tx(roomId, (r) => applyJoin(r, player));
   return applied ? { ok: true } : { ok: false, error: "Couldn't join. The room may be full or already started." };
 }
@@ -61,7 +63,8 @@ export const markReady = (roomId: string, uid: string) => tx(roomId, (r) => appl
 export const callNumber = (roomId: string, uid: string, num: number) => tx(roomId, (r) => applyCall(r, uid, num));
 export const reportLines = (roomId: string, uid: string, count: number, won: boolean) =>
   tx(roomId, (r) => applyReport(r, uid, count, won));
-export const forfeit = (roomId: string, loserId: string) => tx(roomId, (r) => applyForfeit(r, loserId));
+/** Leave a game in progress, or remove a player who went offline. The game goes on for everyone else. */
+export const leaveGame = (roomId: string, playerId: string) => tx(roomId, (r) => applyLeave(r, playerId));
 export const rematch = (roomId: string, uid: string) => tx(roomId, (r) => applyRematch(r, uid));
 
 export function subscribeToRoom(

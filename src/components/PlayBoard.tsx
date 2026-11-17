@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Player, RoomData } from "../types";
 import { countLines, litCells, isCalled } from "../lib/bingoLogic";
-import { callNumber, forfeit } from "../lib/roomActions";
-import { otherPlayerId } from "../lib/roomLogic";
+import { callNumber, leaveGame } from "../lib/roomActions";
 import BoardGrid from "./BoardGrid";
 
 interface Props {
@@ -15,10 +14,16 @@ interface Props {
 
 export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props) {
   const n = room.gridSize;
-  const opponentId = otherPlayerId(room, uid);
-  const opponent: Player | undefined = opponentId ? room.players[opponentId] : undefined;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The box the player tapped but hasn't confirmed yet (index into their board).
+  const [picked, setPicked] = useState<number | null>(null);
+  const myTurn = room.turnId === uid;
+
+  // A tapped box is forgotten as soon as it is no longer this player's turn.
+  useEffect(() => {
+    if (!myTurn) setPicked(null);
+  }, [myTurn]);
 
   if (!myCells) {
     return (
@@ -28,23 +33,32 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
     );
   }
 
+  // Only YOUR line count is shown. Other players' progress is never stored or displayed.
   const myLines = countLines(myCells, room.called, n, room.diagonals);
   const lit = litCells(myCells, room.called, n, room.diagonals);
-  const myTurn = room.turnId === uid;
   const canPick = myTurn && !room.awaiting && !pending;
+  const turnPlayer: Player | undefined = room.turnId ? room.players[room.turnId] : undefined;
+  const seats = room.order.filter((id) => room.players[id]);
 
   const history = Object.entries(room.called)
     .sort((a, b) => a[1] - b[1])
     .map(([key]) => Number(key.slice(1)));
   const lastCaller = room.lastCall ? room.players[room.lastCall.by]?.name ?? "Someone" : null;
 
-  async function handleCell(index: number) {
-    const num = myCells![index];
-    if (!canPick || isCalled(room.called, num)) return;
+  /** Tapping a box only selects it. Tapping it again, or another box, changes the selection. */
+  function handleCell(index: number) {
+    if (!canPick || isCalled(room.called, myCells![index])) return;
+    setError(null);
+    setPicked((current) => (current === index ? null : index));
+  }
+
+  async function confirmPick() {
+    if (picked === null || !canPick) return;
     setPending(true);
     setError(null);
     try {
-      await callNumber(roomId, uid, num);
+      await callNumber(roomId, uid, myCells![picked]);
+      setPicked(null);
     } catch (e) {
       console.error(e);
       setError("That call didn't go through. Check your connection and tap the number again.");
@@ -53,21 +67,21 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
     }
   }
 
-  async function claimWin() {
-    if (!opponentId) return;
-    if (!window.confirm(`${opponent?.name ?? "Your opponent"} is offline. End the game and claim the win?`)) return;
+  async function removePlayer(p: Player) {
+    if (!window.confirm(`${p.name} is offline. Remove them so the game can carry on without them?`)) return;
     try {
-      await forfeit(roomId, opponentId);
+      await leaveGame(roomId, p.id);
     } catch (e) {
       console.error(e);
-      setError("Couldn't end the game. Try again.");
+      setError("Couldn't remove that player. Try again.");
     }
   }
 
   let banner: string;
   if (room.awaiting) banner = "Checking lines…";
+  else if (myTurn && picked !== null) banner = "Happy with it? Press Confirm, or tap another number.";
   else if (myTurn) banner = "Your turn. Tap a number on your board.";
-  else banner = `${opponent?.name ?? "Your opponent"} is choosing a number…`;
+  else banner = `${turnPlayer?.name ?? "Another player"} is choosing a number…`;
 
   return (
     <main className="page wide">
@@ -82,10 +96,23 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
             cells={myCells}
             called={room.called}
             lit={lit}
+            selected={myTurn && !room.awaiting ? picked : null}
             label="Your board"
             canClick={(i) => canPick && !isCalled(room.called, myCells[i])}
             onCellClick={handleCell}
           />
+          {picked !== null && myTurn && !room.awaiting && (
+            <div className="confirm-bar" role="group" aria-label="Confirm your number">
+              <span className="ball">{myCells[picked]}</span>
+              <span className="confirm-text">Call {myCells[picked]}?</span>
+              <button className="btn ghost small" onClick={() => setPicked(null)} disabled={pending}>
+                Change
+              </button>
+              <button className="btn primary small" onClick={confirmPick} disabled={pending}>
+                {pending ? "Calling…" : "Confirm"}
+              </button>
+            </div>
+          )}
         </section>
 
         <aside className="side">
@@ -100,14 +127,35 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
             <div className="bar">
               <div className="bar-fill" style={{ width: `${Math.min(100, (myLines / room.linesToWin) * 100)}%` }} />
             </div>
-            {opponent && !opponent.online && (
-              <div className="offline">
-                <p>{opponent.name} is offline.</p>
-                <button className="btn ghost small" onClick={claimWin}>
-                  End game and claim win
-                </button>
-              </div>
-            )}
+          </div>
+
+          <div className="card">
+            <h2 className="title small">Turn order</h2>
+            <ul className="turn-list">
+              {seats.map((id) => {
+                const p = room.players[id];
+                const isTurn = id === room.turnId && !p.left;
+                return (
+                  <li key={id} className={p.left ? "turn-row left" : isTurn ? "turn-row now" : "turn-row"}>
+                    <span className={p.online && !p.left ? "dot on" : "dot"} aria-hidden="true" />
+                    <span className="grow">
+                      {p.name}
+                      {id === uid && <span className="tag you">You</span>}
+                    </span>
+                    {p.left ? (
+                      <span className="tag">Left</span>
+                    ) : isTurn ? (
+                      <span className="tag turn">{room.awaiting ? "Called" : "Turn"}</span>
+                    ) : null}
+                    {!p.left && !p.online && id !== uid && (
+                      <button className="btn ghost small" onClick={() => removePlayer(p)}>
+                        Remove
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
           <div className="card">
@@ -132,7 +180,7 @@ export default function PlayBoard({ room, roomId, uid, myCells, onLeave }: Props
           <button
             className="btn ghost wide"
             onClick={() => {
-              if (window.confirm("Leave the game? Your opponent will win.")) onLeave();
+              if (window.confirm("Leave the game? You won't be able to rejoin this round.")) onLeave();
             }}
           >
             Leave game

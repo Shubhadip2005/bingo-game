@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { GRID_SIZES, linesToWinOptions } from "../lib/bingoLogic";
+import { MAX_GRID, MIN_GRID, linesToWinOptions, type LineKey } from "../lib/bingoLogic";
 import { createRoom, joinRoom } from "../lib/roomActions";
+import { MAX_PLAYERS, MIN_PLAYERS } from "../lib/roomLogic";
 
 interface Props {
   uid: string;
@@ -9,17 +10,21 @@ interface Props {
   onChangeName: () => void;
 }
 
+const PLAYER_CHOICES = Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, i) => MIN_PLAYERS + i);
+
 export default function Home({ uid, name, onChangeName }: Props) {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"create" | "join">("create");
   const [gridSize, setGridSize] = useState(5);
-  const [lineMode, setLineMode] = useState(1); // index into linesToWinOptions: 1 = Standard
+  const [maxPlayers, setMaxPlayers] = useState(2);
+  const [lineKey, setLineKey] = useState<LineKey>("standard");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const lineOptions = linesToWinOptions(gridSize);
-  const linesToWin = lineOptions[lineMode].value;
+  const chosen = lineOptions.find((o) => o.key === lineKey) ?? lineOptions.find((o) => o.key === "standard")!;
+  const linesToWin = chosen.value;
 
   function switchMode(next: "create" | "join") {
     setMode(next);
@@ -31,7 +36,7 @@ export default function Home({ uid, name, onChangeName }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const roomId = await createRoom(uid, name, { gridSize, linesToWin, diagonals: true });
+      const roomId = await createRoom(uid, name, { gridSize, linesToWin, diagonals: true, maxPlayers });
       navigate(`/room/${roomId}`);
     } catch (err) {
       console.error(err);
@@ -89,31 +94,46 @@ export default function Home({ uid, name, onChangeName }: Props) {
 
         {mode === "create" ? (
           <form onSubmit={handleCreate}>
-            <p className="label">Board size</p>
-            <div className="seg six">
-              {GRID_SIZES.map((n) => (
+            <label className="label" htmlFor="size">
+              Board size: {gridSize}×{gridSize}, {gridSize * gridSize} boxes
+            </label>
+            <input
+              id="size"
+              type="range"
+              className="range"
+              min={MIN_GRID}
+              max={MAX_GRID}
+              value={gridSize}
+              onChange={(e) => setGridSize(Number(e.target.value))}
+            />
+            <div className="range-ends">
+              <span>{MIN_GRID}×{MIN_GRID}</span>
+              <span>{MAX_GRID}×{MAX_GRID}</span>
+            </div>
+
+            <p className="label">Players (up to)</p>
+            <div className="seg four">
+              {PLAYER_CHOICES.map((p) => (
                 <button
                   type="button"
-                  key={n}
-                  className={n === gridSize ? "seg-btn active" : "seg-btn"}
-                  onClick={() => setGridSize(n)}
+                  key={p}
+                  className={p === maxPlayers ? "seg-btn active" : "seg-btn"}
+                  onClick={() => setMaxPlayers(p)}
                 >
-                  <span className="seg-main">
-                    {n}×{n}
-                  </span>
-                  <span className="seg-sub">{n * n} boxes</span>
+                  <span className="seg-main">{p}</span>
+                  <span className="seg-sub">players</span>
                 </button>
               ))}
             </div>
 
             <p className="label">Lines needed to win</p>
-            <div className="seg three">
-              {lineOptions.map((o, i) => (
+            <div className="seg" style={{ gridTemplateColumns: `repeat(${lineOptions.length}, 1fr)` }}>
+              {lineOptions.map((o) => (
                 <button
                   type="button"
-                  key={o.label}
-                  className={i === lineMode ? "seg-btn active" : "seg-btn"}
-                  onClick={() => setLineMode(i)}
+                  key={o.key}
+                  className={o.value === linesToWin ? "seg-btn active" : "seg-btn"}
+                  onClick={() => setLineKey(o.key)}
                 >
                   <span className="seg-main">{o.label}</span>
                   <span className="seg-sub">{o.value} lines</span>
@@ -122,8 +142,8 @@ export default function Home({ uid, name, onChangeName }: Props) {
             </div>
 
             <p className="hint">
-              The first player to complete {linesToWin} lines wins. Rows, columns and diagonals all count. If you both
-              get there on the same number, it's a draw.
+              The first player to complete {linesToWin} lines wins. Rows, columns and diagonals all count. If several
+              players get there on the same number, they draw. The host can start once at least 2 players have joined.
             </p>
 
             {error && <p className="error">{error}</p>}

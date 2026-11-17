@@ -11,8 +11,8 @@ function friendlyError(error: unknown): string {
     case "auth/operation-not-allowed":
     case "auth/admin-restricted-operation":
       return `Anonymous sign-in is switched off. In Firebase Console open Authentication, then Sign-in method, and enable Anonymous. (${code})`;
-    case "auth/invalid-api-key":
     case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+    case "auth/invalid-api-key":
       return `The API key in your .env is not valid. Copy it again from Firebase project settings. (${code})`;
     case "auth/network-request-failed":
       return `No connection to Firebase. Check your internet and try again. (${code})`;

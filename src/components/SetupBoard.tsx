@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Player, RoomData } from "../types";
 import {
-  emptyDraft, isCompleteBoard, nextFreeNumber, randomFill, unusedNumbers, validateEntry, type Draft,
+  emptyDraft, isCompleteBoard, nextFreeNumber, randomFill, sequentialFill, unusedNumbers, validateEntry, type Draft,
 } from "../lib/bingoLogic";
-import { markReady, submitBoard } from "../lib/roomActions";
-import { otherPlayerId } from "../lib/roomLogic";
+import { leaveGame, markReady, submitBoard } from "../lib/roomActions";
+import { activeIds } from "../lib/roomLogic";
 import BoardGrid from "./BoardGrid";
 
 interface Props {
@@ -31,8 +31,8 @@ function loadDraft(key: string, total: number): Draft {
 export default function SetupBoard({ room, roomId, uid, myCells, onSubmitted, onLeave }: Props) {
   const n = room.gridSize;
   const me: Player | undefined = room.players[uid];
-  const opponentId = otherPlayerId(room, uid);
-  const opponent: Player | undefined = opponentId ? room.players[opponentId] : undefined;
+  const others = activeIds(room).filter((id) => id !== uid).map((id) => room.players[id]);
+  const waitingFor = others.filter((p) => !p.ready);
   const locked = !!me?.ready;
 
   const draftKey = `bingo:draft:${roomId}:${room.round}:${uid}`;
@@ -108,16 +108,26 @@ export default function SetupBoard({ room, roomId, uid, myCells, onSubmitted, on
     }
   }
 
+  async function removePlayer(p: Player) {
+    if (!window.confirm(`${p.name} is offline. Remove them so the game can start without them?`)) return;
+    try {
+      await leaveGame(roomId, p.id);
+    } catch (e) {
+      console.error(e);
+      setError("Couldn't remove that player. Try again.");
+    }
+  }
+
   return (
     <main className="page wide">
       <div className="card">
         <h2 className="title">{locked ? "Board locked in" : "Arrange your board"}</h2>
         <p className="hint">
           {locked
-            ? opponent?.ready
-              ? "Both boards are ready. Starting…"
-              : `Waiting for ${opponent?.name ?? "your opponent"} to finish their board.`
-            : `Tap an empty box to place the next number, starting from 1. Tap a number to change or remove it. Use every number from 1 to ${n * n} once. Your opponent can't see your board until the game ends.`}
+            ? waitingFor.length === 0
+              ? "Everyone is ready. Starting…"
+              : `Waiting for ${waitingFor.map((p) => p.name).join(", ")} to finish their board.`
+            : `Tap an empty box to place the next number, starting from 1. Tap a number to change or remove it. Use every number from 1 to ${n * n} once. Nobody can see your board until the game ends.`}
         </p>
 
         {!locked && (
@@ -171,6 +181,9 @@ export default function SetupBoard({ room, roomId, uid, myCells, onSubmitted, on
             <button className="btn ghost" onClick={() => setDraft((d) => randomFill(d, n))} disabled={placed === n * n}>
               Fill the rest randomly
             </button>
+            <button className="btn ghost" onClick={() => setDraft((d) => sequentialFill(d, n))} disabled={placed === n * n}>
+              Fill the rest in order
+            </button>
             <button className="btn ghost" onClick={() => setDraft(randomFill(emptyDraft(n), n))}>
               Randomize everything
             </button>
@@ -191,13 +204,27 @@ export default function SetupBoard({ room, roomId, uid, myCells, onSubmitted, on
           </div>
         )}
 
-        <div className="status-row">
-          <span className={me?.ready ? "tag ok" : "tag"}>You {me?.ready ? "ready" : "arranging"}</span>
-          <span className={opponent?.ready ? "tag ok" : "tag"}>
-            {opponent?.name ?? "Opponent"} {opponent?.ready ? "ready" : "arranging"}
-          </span>
-          {opponent && !opponent.online && <span className="tag warn">Opponent offline</span>}
-        </div>
+        <p className="label">Players</p>
+        <ul className="players">
+          {activeIds(room).map((id) => {
+            const p = room.players[id];
+            return (
+              <li key={id} className="player-row">
+                <span className={p.online ? "dot on" : "dot"} aria-hidden="true" />
+                <span className="grow">
+                  {p.name}
+                  {id === uid && <span className="tag you">You</span>}
+                </span>
+                <span className={p.ready ? "tag ok" : "tag"}>{p.ready ? "Ready" : "Arranging"}</span>
+                {id !== uid && !p.online && (
+                  <button className="btn ghost small" onClick={() => removePlayer(p)}>
+                    Remove
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
         <button className="btn ghost wide" onClick={onLeave}>
           Leave game
         </button>

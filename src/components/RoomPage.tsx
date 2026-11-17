@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Player } from "../types";
 import { useRoom } from "../hooks/useRoom";
 import { countLines } from "../lib/bingoLogic";
-import { fetchBoard, forfeit, joinRoom, leaveLobby, reportLines, startPresence } from "../lib/roomActions";
+import { fetchBoard, joinRoom, leaveGame, leaveLobby, reportLines, startPresence } from "../lib/roomActions";
 import Lobby from "./Lobby";
 import SetupBoard from "./SetupBoard";
 import PlayBoard from "./PlayBoard";
@@ -21,7 +21,7 @@ export default function RoomPage({ uid, name }: Props) {
   const { room, error } = useRoom(roomId);
 
   const me: Player | undefined = room?.players[uid];
-  const isPlayer = !!me;
+  const isPlayer = !!me && !me.left;
 
   const [stored, setStored] = useState<{ roomId: string; round: number; cells: number[] } | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -88,7 +88,7 @@ export default function RoomPage({ uid, name }: Props) {
     if (!room) return;
     try {
       if (room.status === "waiting") await leaveLobby(roomId, uid, room.hostId === uid);
-      else if (room.status === "setup" || room.status === "playing") await forfeit(roomId, uid);
+      else if (room.status === "setup" || room.status === "playing") await leaveGame(roomId, uid);
     } catch (e) {
       console.error(e);
     }
@@ -127,16 +127,16 @@ export default function RoomPage({ uid, name }: Props) {
   }
 
   if (!isPlayer) {
-    const canJoin = room.status === "waiting" && Object.keys(room.players).length < 2;
+    const canJoin = room.status === "waiting" && Object.keys(room.players).length < room.maxPlayers;
     return (
       <main className="page">
         <div className="card">
           <p className="label">Room {roomId}</p>
-          <h2 className="title">{canJoin ? "Join this game" : "This game is full"}</h2>
+          <h2 className="title">{canJoin ? "Join this game" : "You can't join this game"}</h2>
           <p className="hint">
             {canJoin
-              ? `${room.gridSize}×${room.gridSize} board, first to ${room.linesToWin} lines. You'll join as ${name}.`
-              : "Two players are already in this room, or the match has started."}
+              ? `${room.gridSize}×${room.gridSize} board, first to ${room.linesToWin} lines, up to ${room.maxPlayers} players. You'll join as ${name}.`
+              : "The room is full, or the match has already started."}
           </p>
           {joinError && <p className="error">{joinError}</p>}
           {canJoin && (

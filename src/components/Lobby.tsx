@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { RoomData } from "../types";
 import { copyText } from "../lib/session";
 import { startGame } from "../lib/roomActions";
+import { MIN_PLAYERS } from "../lib/roomLogic";
 
 interface Props {
   room: RoomData;
@@ -16,8 +17,9 @@ export default function Lobby({ room, roomId, uid, onLeave }: Props) {
   const [busy, setBusy] = useState(false);
 
   const players = Object.values(room.players).sort((a, b) => a.joinedAt - b.joinedAt);
+  const emptySlots = Math.max(0, room.maxPlayers - players.length);
   const isHost = room.hostId === uid;
-  const canStart = isHost && players.length === 2;
+  const canStart = isHost && players.length >= MIN_PLAYERS;
 
   async function copy(kind: "code" | "link") {
     const ok = await copyText(kind === "code" ? roomId : `${window.location.origin}/room/${roomId}`);
@@ -43,9 +45,10 @@ export default function Lobby({ room, roomId, uid, onLeave }: Props) {
   return (
     <main className="page">
       <div className="card">
-        <h2 className="title">Waiting for your opponent</h2>
+        <h2 className="title">Waiting for players</h2>
         <p className="hint">
-          {room.gridSize}×{room.gridSize} board, first to {room.linesToWin} lines. Rows, columns and diagonals count.
+          {room.gridSize}×{room.gridSize} board, first to {room.linesToWin} lines, up to {room.maxPlayers} players.
+          Rows, columns and diagonals count.
         </p>
 
         <p className="label">Room code</p>
@@ -59,6 +62,9 @@ export default function Lobby({ room, roomId, uid, onLeave }: Props) {
           </button>
         </div>
 
+        <p className="label">
+          Players: {players.length} of {room.maxPlayers}
+        </p>
         <ul className="players">
           {players.map((p) => (
             <li key={p.id} className="player-row">
@@ -68,19 +74,24 @@ export default function Lobby({ room, roomId, uid, onLeave }: Props) {
               {p.id === uid && <span className="tag you">You</span>}
             </li>
           ))}
-          {players.length < 2 && (
-            <li className="player-row empty">
+          {Array.from({ length: emptySlots }, (_, i) => (
+            <li key={`empty-${i}`} className="player-row empty">
               <span className="dot" aria-hidden="true" />
               <span className="grow">Waiting for a player to join…</span>
             </li>
-          )}
+          ))}
         </ul>
 
         {error && <p className="error">{error}</p>}
         {isHost ? (
-          <button className="btn primary" onClick={handleStart} disabled={!canStart || busy}>
-            {canStart ? "Start game" : "Need one more player"}
-          </button>
+          <>
+            <button className="btn primary" onClick={handleStart} disabled={!canStart || busy}>
+              {canStart ? `Start game with ${players.length} players` : "Need at least 2 players"}
+            </button>
+            {canStart && emptySlots > 0 && (
+              <p className="hint">You can wait for more players, or start now. Nobody can join after the game starts.</p>
+            )}
+          </>
         ) : (
           <p className="hint">Waiting for the host to start the game.</p>
         )}
