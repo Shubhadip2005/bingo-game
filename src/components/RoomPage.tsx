@@ -1,17 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { Player } from "../types";
+import type { BoardNotice, Player, RoomNotices } from "../types";
 import { useRoom } from "../hooks/useRoom";
 import { countLines } from "../lib/bingoLogic";
-import { fetchBoard, joinRoom, leaveGame, leaveLobby, reportLines, startPresence } from "../lib/roomActions";
+import {
+  joinRoom, leaveGame, leaveLobby, reportLines, startPresence, subscribeToBoard, subscribeToNotices,
+} from "../lib/roomActions";
 import Lobby from "./Lobby";
 import SetupBoard from "./SetupBoard";
 import PlayBoard from "./PlayBoard";
 import Result from "./Result";
+import NoticeBar from "./NoticeBar";
 
 interface Props {
   uid: string;
   name: string;
+}
+
+interface StoredBoard {
+  roomId: string;
+  round: number;
+  cells: number[];
+  notice: BoardNotice | null;
 }
 
 export default function RoomPage({ uid, name }: Props) {
@@ -23,14 +33,17 @@ export default function RoomPage({ uid, name }: Props) {
   const me: Player | undefined = room?.players[uid];
   const isPlayer = !!me && !me.left;
 
-  const [stored, setStored] = useState<{ roomId: string; round: number; cells: number[] } | null>(null);
+  const [stored, setStored] = useState<StoredBoard | null>(null);
+  const [notices, setNotices] = useState<RoomNotices | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [tick, setTick] = useState(0);
   const lastReport = useRef({ key: "", at: 0 });
 
-  // My own board for the current round (private; loaded from the database after a refresh).
-  const myCells = stored && room && stored.roomId === roomId && stored.round === room.round ? stored.cells : null;
+  // My own board for the current round (private; kept live so corrections show up straight away).
+  const mine = stored && room && stored.roomId === roomId && stored.round === room.round ? stored : null;
+  const myCells = mine?.cells ?? null;
+  const myNotice = mine?.notice ?? null;
 
   // Show me as online while I'm in the room.
   useEffect(() => {
@@ -38,18 +51,19 @@ export default function RoomPage({ uid, name }: Props) {
     return startPresence(roomId, uid);
   }, [roomId, uid, isPlayer]);
 
-  // Reload my board after a refresh once it has been submitted.
+  // Follow my board once it has been submitted.
+  const round = room?.round;
+  const boardActive = isPlayer && !!room && (room.status === "playing" || (room.status === "setup" && !!me?.ready));
   useEffect(() => {
-    if (!room || !isPlayer || myCells) return;
-    if (room.status === "waiting" || (room.status === "setup" && !me?.ready)) return;
-    let dead = false;
-    fetchBoard(roomId, room.round, uid).then((cells) => {
-      if (!dead && cells) setStored({ roomId, round: room.round, cells });
-    });
-    return () => {
-      dead = true;
-    };
-  }, [roomId, uid, room?.round, room?.status, me?.ready, isPlayer, myCells]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!boardActive || round === undefined) return;
+    return subscribeToBoard(roomId, round, uid, (board) => setStored({ roomId, round, ...board }));
+  }, [boardActive, roomId, round, uid]);
+
+  // Notices about this room (an admin viewing, corrections, messages).
+  useEffect(() => {
+    if (!isPlayer) return;
+    return subscribeToNotices(roomId, setNotices);
+  }, [roomId, isPlayer]);
 
   // While a call is being checked, re-run the report effect every few seconds in case a write failed.
   useEffect(() => {
@@ -58,7 +72,7 @@ export default function RoomPage({ uid, name }: Props) {
     return () => clearInterval(timer);
   }, [room?.status, room?.awaiting]);
 
-  // After every call, report how many lines MY board has. The last report settles the call.
+  // After every call, report whether MY board has reached the target. The last report settles the call.
   useEffect(() => {
     if (!room || !isPlayer || !myCells) return;
     if (room.status !== "playing" || !room.awaiting) return;
@@ -117,7 +131,7 @@ export default function RoomPage({ uid, name }: Props) {
       <main className="page">
         <div className="card">
           <h2 className="title">Room not found</h2>
-          <p className="hint">This room doesn't exist or the host closed it. Check the code, or create a new room.</p>
+          <p className="hint">This room doesn't exist or was closed. Check the code, or create a new room.</p>
           <button className="btn primary" onClick={() => navigate("/")}>
             Back to home
           </button>
@@ -152,24 +166,44 @@ export default function RoomPage({ uid, name }: Props) {
     );
   }
 
+  const bar = <NoticeBar notices={notices} myNotice={myNotice} />;
+
   switch (room.status) {
     case "waiting":
-      return <Lobby room={room} roomId={roomId} uid={uid} onLeave={handleLeave} />;
+      return (
+        <>
+          {bar}
+          <Lobby room={room} roomId={roomId} uid={uid} onLeave={handleLeave} />
+        </>
+      );
     case "setup":
       return (
-        <SetupBoard
-          key={room.round}
-          room={room}
-          roomId={roomId}
-          uid={uid}
-          myCells={myCells}
-          onSubmitted={(cells) => setStored({ roomId, round: room.round, cells })}
-          onLeave={handleLeave}
-        />
+        <>
+          {bar}
+          <SetupBoard
+            key={room.round}
+            room={room}
+            roomId={roomId}
+            uid={uid}
+            myCells={myCells}
+            onSubmitted={(cells) => setStored({ roomId, round: room.round, cells, notice: null })}
+            onLeave={handleLeave}
+          />
+        </>
       );
     case "playing":
-      return <PlayBoard room={room} roomId={roomId} uid={uid} myCells={myCells} onLeave={handleLeave} />;
+      return (
+        <>
+          {bar}
+          <PlayBoard room={room} roomId={roomId} uid={uid} myCells={myCells} onLeave={handleLeave} />
+        </>
+      );
     default:
-      return <Result room={room} roomId={roomId} uid={uid} />;
+      return (
+        <>
+          {bar}
+          <Result room={room} roomId={roomId} uid={uid} />
+        </>
+      );
   }
 }

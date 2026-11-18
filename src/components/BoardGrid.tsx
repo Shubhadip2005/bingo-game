@@ -6,7 +6,7 @@ interface Props {
   cells: (number | null)[];
   called?: Record<string, number>;
   lit?: Set<number>;
-  selected?: number | null;
+  selected?: number | number[] | null;
   /** show the order in which each number was called (used on the final reveal) */
   showOrder?: boolean;
   canClick?: (index: number) => boolean;
@@ -19,6 +19,7 @@ const BIG_BOARD = 10;
 
 export default function BoardGrid({ n, cells, called, lit, selected, showOrder, canClick, onCellClick, label }: Props) {
   const big = n > BIG_BOARD;
+  const chosen = Array.isArray(selected) ? selected : selected == null ? [] : [selected];
   return (
     <div className="grid-wrap">
       <div
@@ -36,7 +37,7 @@ export default function BoardGrid({ n, cells, called, lit, selected, showOrder, 
             value === null ? "empty" : "",
             isCalled ? "called" : "",
             lit?.has(i) ? "lit" : "",
-            selected === i ? "selected" : "",
+            chosen.includes(i) ? "selected" : "",
             clickable ? "clickable" : "",
           ]
             .filter(Boolean)

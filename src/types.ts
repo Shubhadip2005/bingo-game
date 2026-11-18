@@ -34,6 +34,8 @@ export interface RoomOptions {
 }
 
 export interface RoomData extends RoomOptions {
+  /** 2 = created by a game version that shows players admin notices */
+  ver: number;
   status: RoomStatus;
   hostId: string;
   round: number;
@@ -51,4 +53,20 @@ export interface RoomData extends RoomOptions {
   winnerIds: string[] | null;
   endReason: EndReason | null;
   createdAt: number;
+}
+
+/** Shown only to the player whose board an admin corrected (stored on that player's private board). */
+export interface BoardNotice {
+  at: number;
+  a: number;
+  b: number;
+}
+
+/** Public notices for a room. Only admins can write these, players only read them. */
+export interface RoomNotices {
+  /** server time (ms) of the last moment an admin was viewing the game */
+  watching: number | null;
+  /** set when an admin corrected any board in this game */
+  note: { at: number } | null;
+  message: { text: string; at: number } | null;
 }

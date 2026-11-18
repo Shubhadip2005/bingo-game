@@ -38,7 +38,7 @@ export default function Result({ room, roomId, uid }: Props) {
   const joinNames = (list: string[]) =>
     list.length <= 1 ? list.join("") : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
 
-    let headline: string;
+  let headline: string;
   let detail: string;
   if (winners.length === 0) {
     headline = "Game over";

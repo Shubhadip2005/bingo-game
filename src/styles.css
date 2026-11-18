@@ -210,3 +210,11 @@ h1, h2, h3, p { margin: 0; }
   .cell.called::before { animation: none; }
   .bar-fill, .btn, .cell { transition: none; }
 }
+
+/* ---------- notices shown to players ---------- */
+.notice-stack { position: sticky; top: 0; z-index: 30; display: grid; gap: 2px; }
+.notice {
+  display: flex; align-items: center; justify-content: center; gap: 0.8rem; flex-wrap: wrap;
+  background: var(--ball); color: var(--ink); padding: 0.6rem 1rem; font-weight: 700; text-align: center;
+}
+.notice-x { border: 0; background: var(--ink); color: #fff; border-radius: 999px; padding: 0.25rem 0.8rem; font-weight: 700; font-size: 0.8rem; }

@@ -305,3 +305,10 @@ describe("normalizeRoom", () => {
     expect(normalizeRoom({ players: {}, order: { 0: "A", 1: "B" } }).order).toEqual(["A", "B"]);
   });
 });
+
+describe("room version", () => {
+  it("new rooms are marked as version 2 and old rooms read as version 1", () => {
+    expect(makeRoom("A", "Asha", OPTS).ver).toBe(2);
+    expect(normalizeRoom({ gridSize: 5, players: {} }).ver).toBe(1);
+  });
+});

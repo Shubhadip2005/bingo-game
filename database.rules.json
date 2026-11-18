@@ -1,9 +1,22 @@
 {
   "rules": {
-    "rooms": {
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "roomNotices": {
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null && ((!data.exists() && newData.hasChildren(['gridSize','status','hostId','players'])) || data.child('players').child(auth.uid).exists() || (data.child('status').val() === 'waiting' && newData.child('players').child(auth.uid).exists()))",
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+      }
+    },
+    "rooms": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.hasChildren(['gridSize','status','hostId','players'])) || data.child('players').child(auth.uid).exists() || (data.child('status').val() === 'waiting' && newData.child('players').child(auth.uid).exists()))",
         ".validate": "newData.hasChildren(['gridSize','status','hostId','players'])",
         "gridSize": { ".validate": "newData.isNumber() && newData.val() >= 5 && newData.val() <= 25" },
         "maxPlayers": { ".validate": "newData.isNumber() && newData.val() >= 2 && newData.val() <= 5" },
@@ -11,7 +24,9 @@
       }
     },
     "boards": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
       "$roomId": {
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
         "$round": {
           "$uid": {
             ".read": "auth != null && (auth.uid === $uid || root.child('rooms').child($roomId).child('status').val() === 'finished')",

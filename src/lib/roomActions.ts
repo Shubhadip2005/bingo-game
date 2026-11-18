@@ -1,7 +1,7 @@
 /** Everything that talks to Firebase. Game rules live in roomLogic.ts. */
 import { ref, get, set, remove, runTransaction, onValue, onDisconnect } from "firebase/database";
 import { db } from "../firebase";
-import type { Player, RoomData, RoomOptions } from "../types";
+import type { BoardNotice, Player, RoomData, RoomNotices, RoomOptions } from "../types";
 import {
   applyCall, applyGuestLeave, applyJoin, applyLeave, applyReady, applyRematch, applyReport,
   applyStart, cleanName, makeRoom, normalizeRoom,
@@ -89,16 +89,56 @@ export async function submitBoard(roomId: string, round: number, uid: string, ce
   await set(boardRef(roomId, round, uid), { cells, createdAt: Date.now() });
 }
 
+export const toCells = (raw: unknown): number[] =>
+  (Array.isArray(raw) ? raw : Object.values((raw ?? {}) as Record<string, unknown>)).map(Number);
+
+export const toNotice = (raw: unknown): BoardNotice | null => {
+  const v = raw as { at?: unknown; a?: unknown; b?: unknown } | null | undefined;
+  return v && v.a !== undefined && v.b !== undefined ? { at: Number(v.at) || 0, a: Number(v.a), b: Number(v.b) } : null;
+};
+
 export async function fetchBoard(roomId: string, round: number, uid: string): Promise<number[] | null> {
   try {
     const snap = await get(boardRef(roomId, round, uid));
     if (!snap.exists()) return null;
-    const raw = snap.val()?.cells;
-    const cells: number[] = Array.isArray(raw) ? raw : Object.values(raw ?? {});
-    return cells.map(Number);
+    return toCells(snap.val()?.cells);
   } catch {
-    return null; // not allowed yet (opponent's board during the game) or offline
+    return null; // not allowed yet (another player's board during the game) or offline
   }
+}
+
+/** Live view of my own board, so a correction made by an admin shows up straight away. */
+export function subscribeToBoard(
+  roomId: string,
+  round: number,
+  uid: string,
+  onBoard: (board: { cells: number[]; notice: BoardNotice | null }) => void
+): () => void {
+  return onValue(
+    boardRef(roomId, round, uid),
+    (snap) => {
+      if (!snap.exists()) return;
+      const v = snap.val();
+      onBoard({ cells: toCells(v.cells), notice: toNotice(v.notice) });
+    },
+    () => undefined
+  );
+}
+
+/** Notices for a room (admin viewing, corrections, messages). Read-only for players. */
+export function subscribeToNotices(roomId: string, onNotices: (notices: RoomNotices) => void): () => void {
+  return onValue(
+    ref(db, `roomNotices/${roomId}`),
+    (snap) => {
+      const v = snap.val() ?? {};
+      onNotices({
+        watching: typeof v.watching === "number" ? v.watching : null,
+        note: v.note ? { at: Number(v.note.at) || 0 } : null,
+        message: v.message?.text ? { text: String(v.message.text), at: Number(v.message.at) || 0 } : null,
+      });
+    },
+    () => undefined
+  );
 }
 
 // ---------- presence ----------

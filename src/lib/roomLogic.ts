@@ -30,6 +30,7 @@ export function normalizeRoom(raw: any): RoomData {
   const rawOrder = raw.order;
   const order = (Array.isArray(rawOrder) ? rawOrder : Object.values(rawOrder ?? {})).map(String);
   return {
+    ver: Number(raw.ver) || 1,
     gridSize,
     linesToWin: Number(raw.linesToWin) || gridSize,
     diagonals: raw.diagonals !== false,
@@ -59,6 +60,7 @@ export function makeRoom(hostId: string, hostName: string, opts: RoomOptions, no
     id: hostId, name: cleanName(hostName, "Player 1"), joinedAt: now, ready: false, online: true, left: false,
   };
   return {
+    ver: 2,
     gridSize,
     linesToWin,
     diagonals: true, // rows, columns and both diagonals always count
