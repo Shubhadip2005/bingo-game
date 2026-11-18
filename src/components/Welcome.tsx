@@ -31,7 +31,7 @@ export default function Welcome({ initialName = "", onEnter }: Props) {
         </div>
         <h1 className="logo">Bingo Duel</h1>
         <p className="tagline">
-          Two players, one secret board each. Call numbers in turn and finish your lines before your opponent does.
+          2 to 5 players, one secret board each. Call numbers in turn and finish your lines before everyone else does.
         </p>
       </header>
 
